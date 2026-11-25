@@ -1,0 +1,45 @@
+@startuml
+title Spot Reservation, LPR Gate Entry & No-Show Destruction
+
+actor Student
+boundary ":StudentDashboardUI" as UI <<boundary>>
+control ":ReservationControl" as Ctrl <<control>>
+entity "spot : ParkingSpot" as Spot <<entity>>
+entity "res : Reservation" as Res <<entity>>
+boundary ":LprGateBoundary" as LPR <<boundary>>
+
+Student -> UI : onReserveSpotClicked("EV-04")
+UI -> Ctrl : reserveSpot(userId, "EV-04", "12-345-67", expectedVersion)
+Ctrl -> Spot : isAvailable()
+
+alt available == true
+    Ctrl -> Spot : tryReserve(expectedVersion)
+    alt acquired == true
+        create Res
+        Ctrl -> Res : <<create>>
+        Res --> Ctrl : res
+        Ctrl --> UI : res
+        UI -> UI : displayCountdown(15)
+    else (Concurrent Race Condition)
+        Ctrl --> UI : reservation failed
+        UI -> UI : showErrorAlert("Spot just reserved by another user")
+    end
+else
+    Ctrl --> UI : spot unavailable
+    UI -> UI : showErrorAlert("Spot unavailable")
+end
+
+== Within 15 Minutes: Vehicle Arrives at Entrance Gate ==
+
+LPR -> Ctrl : processLprGateEntry("12-345-67")
+Ctrl -> Res : isWithin15MinWindow()
+
+alt valid == true
+    Ctrl -> Res : setStatus(FULFILLED)
+    LPR -> LPR : openBarrierGate()
+else (No-Show > 15 Min)
+    Ctrl -> Res : setStatus(NO_SHOW_REVOKED)
+    destroy Res
+    LPR -> LPR : denyEntry("Reservation expired; no-show")
+end
+@enduml

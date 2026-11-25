@@ -1,0 +1,19 @@
+@startuml
+title EV Charging 30-Minute Idle Penalty
+
+participant ":IdlePenaltyScheduler" as Timer <<system>>
+control ":EvBillingControl" as Billing <<control>>
+entity "session : ChargingSession" as Session <<entity>>
+entity "fine : Violation" as Fine <<entity>>
+boundary ":SmsGatewayBoundary" as SMS <<boundary>>
+
+Timer -> Billing : applyIdlePenalties()
+loop for each completed ChargingSession
+    Billing -> Session : isIdleOver30Minutes()
+    alt overdue == true and isPhysicallyOccupied == true
+        create Fine
+        Billing -> Fine : <<create>> Charger Idle Penalty, fineAmount = 5.0 NIS/hr
+        Billing -> SMS : sendSmsAlert(phoneNumber, "Idle penalty of 5 NIS/hr applied.")
+    end
+end
+@enduml
