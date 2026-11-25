@@ -1,6 +1,6 @@
 .idea/
 *.iml
-*.vpp.bak
+*.vpp.bak*
 *.vpp.lck
 .DS_Store
 Thumbs.db
