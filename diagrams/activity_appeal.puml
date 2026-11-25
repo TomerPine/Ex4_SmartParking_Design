@@ -1,4 +1,3 @@
-```plantuml
 @startuml
 |Security Guard (Actor)|
 start
@@ -38,4 +37,3 @@ endif
 :Archive Appeal Decision & Notify User;
 stop
 @enduml
-```
