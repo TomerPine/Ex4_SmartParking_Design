@@ -1,38 +1,57 @@
 @startuml
-title Spot Reservation, LPR Gate Entry & No-Show Destruction
+title Spot Reservation (Concurrent Race), LPR Gate Entry & No-Show Destruction
 
-actor Student
-boundary ":StudentDashboardUI" as UI <<boundary>>
+actor "Student A" as SA
+actor "Student B" as SB
+boundary "uiA : StudentDashboardUI" as UIA <<boundary>>
+boundary "uiB : StudentDashboardUI" as UIB <<boundary>>
 control ":ReservationControl" as Ctrl <<control>>
 entity "spot : ParkingSpot" as Spot <<entity>>
 entity "res : Reservation" as Res <<entity>>
 boundary ":LprGateBoundary" as LPR <<boundary>>
 
-Student -> UI : onReserveSpotClicked("EV-04")
-UI -> Ctrl : reserveSpot(userId, "EV-04", "12-345-67", expectedVersion)
-Ctrl -> Spot : isAvailable()
+note over SA, SB
+  Last available Student Zone spot "S-12".
+  Both students click Reserve at the same millisecond.
+end note
 
-alt available == true
-    Ctrl -> Spot : tryReserve(expectedVersion)
-    alt acquired == true
-        create Res
-        Ctrl -> Res : <<create>>
-        Res --> Ctrl : res
-        Ctrl --> UI : res
-        UI -> UI : displayCountdown(15)
-    else (Concurrent Race Condition)
-        Ctrl --> UI : reservation failed
-        UI -> UI : showErrorAlert("Spot just reserved by another user")
-    end
-else
-    Ctrl --> UI : spot unavailable
-    UI -> UI : showErrorAlert("Spot unavailable")
+par Student A
+    SA -> UIA : onReserveSpotClicked("S-12")
+    UIA -> Ctrl : reserveSpot(userA, "S-12", "12-345-67")
+    Ctrl -> Spot : getVersion()
+    Spot --> Ctrl : 5
+else Student B
+    SB -> UIB : onReserveSpotClicked("S-12")
+    UIB -> Ctrl : reserveSpot(userB, "S-12", "98-765-43")
+    Ctrl -> Spot : getVersion()
+    Spot --> Ctrl : 5
 end
 
-== Within 15 Minutes: Vehicle Arrives at Entrance Gate ==
+note over Ctrl, Spot
+  tryReserve() is atomic (compare-and-set on version):
+  only one call with expectedVersion = 5 can succeed.
+end note
+
+par Student A wins
+    Ctrl -> Spot : tryReserve(5)
+    Spot --> Ctrl : true (status = RESERVED, version = 6)
+    create Res
+    Ctrl -> Res : <<create>>
+    Res --> Ctrl : res
+    Ctrl --> UIA : res
+    UIA -> UIA : displayCountdown(15)
+else Student B loses
+    Ctrl -> Spot : tryReserve(5)
+    Spot --> Ctrl : false (version is now 6)
+    Ctrl --> UIB : reservation failed
+    UIB -> UIB : showErrorAlert("Spot just reserved by another user")
+end
+
+== Within 15 Minutes: Student A's Vehicle Arrives at Entrance Gate ==
 
 LPR -> Ctrl : processLprGateEntry("12-345-67")
 Ctrl -> Res : isWithin15MinWindow()
+Res --> Ctrl : valid
 
 alt valid == true
     Ctrl -> Res : setStatus(FULFILLED)

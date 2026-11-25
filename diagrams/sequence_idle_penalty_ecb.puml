@@ -1,16 +1,39 @@
 @startuml
-title EV Charging 30-Minute Idle Penalty
+title EV Charging 30-Minute Idle Penalty (Unplugged at Minute 29, Car Still in Bay)
 
-participant ":IdlePenaltyScheduler" as Timer <<system>>
+actor "EV Driver" as Driver
+boundary ":EvChargerBoundary" as Charger <<boundary>>
+actor Timer
 control ":EvBillingControl" as Billing <<control>>
 entity "session : ChargingSession" as Session <<entity>>
 entity "fine : Violation" as Fine <<entity>>
 boundary ":SmsGatewayBoundary" as SMS <<boundary>>
 
+== Minute 0: Battery Reaches 100% ==
+Charger -> Billing : notifyChargeComplete(sessionId)
+Billing -> Session : markChargeComplete()
+note right of Session : completedAt = now
+Billing -> SMS : sendSmsAlert(phoneNumber, "Charging complete. Vacate the bay within 30 minutes.")
+
+== Minute 29: Driver Unplugs the Cable but Leaves the Car in the Bay ==
+Driver -> Charger : unplugs cable
+Charger -> Billing : handleCableUnplugged(sessionId)
+Billing -> Session : markUnplugged()
+note right of Session
+  isPluggedIn = false
+  isPhysicallyOccupied = true (bay sensor still detects the car)
+end note
+
+== Minute 30+: Periodic Idle Check ==
 Timer -> Billing : applyIdlePenalties()
 loop for each completed ChargingSession
     Billing -> Session : isIdleOver30Minutes()
-    alt overdue == true and isPhysicallyOccupied == true
+    note right of Session
+      isPhysicallyOccupied AND now > completedAt + 30 min
+      (isPluggedIn is ignored)
+    end note
+    Session --> Billing : idle
+    alt idle == true
         create Fine
         Billing -> Fine : <<create>> Charger Idle Penalty, fineAmount = 5.0 NIS/hr
         Billing -> SMS : sendSmsAlert(phoneNumber, "Idle penalty of 5 NIS/hr applied.")
